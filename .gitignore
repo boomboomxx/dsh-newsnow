@@ -1,0 +1,8 @@
+# 本地开发验证脚本与从 app.asar 解包的 Cordis 源码，不随仓库分发（见 tools/README.md）
+tools/
+
+# Node / 编辑器杂项
+node_modules/
+*.log
+.DS_Store
+Thumbs.db
