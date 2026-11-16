@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-newsnow",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "private": true,
   "type": "module",
   "description": "Hot-news reading panel for DeepSeek Harness, backed by the NewsNow (newsnext/newsnow) public API.",

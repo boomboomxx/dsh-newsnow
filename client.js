@@ -54,6 +54,40 @@ window.__ModuleLoader__.load({
      */
     const remembered = { scrollTop: 0, embedWidth: undefined, managing: false, cardOpen: {} }
 
+    /* Reader anchor for the card wall: the topmost visible card plus its pixel
+       offset below the viewport top. Restoring by anchor survives the layout
+       flips (embed open/close, width drag) that can drop the wall back to the
+       top — by then a raw remembered scrollTop is already poisoned to 0 by the
+       reset's own scroll event. */
+    const wallRef = { current: null }
+    const rememberedAnchor = { key: undefined, offset: 0 }
+    const captureWallAnchor = () => {
+      const el = wallRef.current
+      if (el === null || el === undefined) return
+      const rect = el.getBoundingClientRect()
+      for (const card of el.querySelectorAll('.dshnn-card[data-source]')) {
+        const top = card.getBoundingClientRect().top
+        if (top + card.offsetHeight >= rect.top + 1) {
+          rememberedAnchor.key = card.getAttribute('data-source') ?? undefined
+          rememberedAnchor.offset = Math.max(0, top - rect.top)
+          return
+        }
+      }
+      rememberedAnchor.key = undefined
+    }
+    const restoreWall = () => {
+      const el = wallRef.current
+      if (el === null || el === undefined) return
+      if (rememberedAnchor.key !== undefined) {
+        const card = el.querySelector(`.dshnn-card[data-source="${rememberedAnchor.key}"]`)
+        if (card !== null) {
+          el.scrollTop = Math.max(0, card.offsetTop - rememberedAnchor.offset)
+          return
+        }
+      }
+      if (remembered.scrollTop > 0) el.scrollTop = remembered.scrollTop
+    }
+
     /**
      * UI strings live in locale/zh.json and locale/en.json ("text" section);
      * the Host serves them over /api/dsh-newsnow/text and apply() registers
@@ -2437,6 +2471,8 @@ window.__ModuleLoader__.load({
       const toggleEmbed = React.useCallback(() => {
         const pane = props.embed
         if (pane === undefined) return
+        /* Pin the reader anchor before the split re-lays out. */
+        captureWallAnchor()
         if (embedState.open) {
           pane.close()
           return
@@ -2451,10 +2487,16 @@ window.__ModuleLoader__.load({
         const splitter = event.currentTarget
         const rect = splitter.parentElement.getBoundingClientRect()
         splitter.setPointerCapture(event.pointerId)
+        /* Pin the reader anchor once per drag; each width change reflows the
+           wall, and restoreWall keeps the card being read where it was. */
+        captureWallAnchor()
+        let raf = 0
         const move = (ev) => {
           const width = Math.max(280, Math.min(rect.right - ev.clientX, rect.width * 0.7))
           remembered.embedWidth = width
           setEmbedWidth(width)
+          if (raf !== 0) cancelAnimationFrame(raf)
+          raf = requestAnimationFrame(restoreWall)
         }
         const stop = () => {
           splitter.removeEventListener('pointermove', move)
@@ -2498,8 +2540,17 @@ window.__ModuleLoader__.load({
         remembered.scrollTop = event?.currentTarget?.scrollTop ?? 0
       }, [])
       const restoreScroll = React.useCallback((el) => {
-        if (el !== null && el !== undefined && remembered.scrollTop > 0) el.scrollTop = remembered.scrollTop
+        wallRef.current = el
+        restoreWall()
       }, [])
+      /* Re-assert the reader's position whenever the pane flips: opening or
+         closing the embed re-lays the split and the wall can drop back to the
+         top before the guest even attaches. */
+      React.useEffect(() => {
+        restoreWall()
+        const raf = requestAnimationFrame(restoreWall)
+        return () => cancelAnimationFrame(raf)
+      }, [embedState.open])
 
       /* Floating actions replace the header: two icon buttons pinned to the
        * top-right, sticking to the edge while the card wall scrolls. The
@@ -2736,6 +2787,8 @@ window.__ModuleLoader__.load({
               openSidebarLink(url)
               return
             }
+            /* Opening a guest re-lays the split: pin the reader anchor first. */
+            captureWallAnchor()
             void embed.show(url).then((opened) => {
               if (opened) return
               /* The guest could not attach (bridge refused): fall back. */
