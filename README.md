@@ -12,7 +12,7 @@
 - 链接打开方式三选一：内嵌浏览器分栏（Desktop）/ 侧边栏浏览器（Web）/ 系统浏览器
 - 自动刷新（关闭 / 1 / 5 / 15 / 30 分钟）、懒加载、并发队列、失败回退旧数据
 - 界面文案跟随 Harness 的八种界面语言（zh / en / ja / es / fr / de / ru / pt）
-- 面板切换不丢状态（滚动位置、页签、弹窗、折叠状态均跨面板记忆）
+- 面板切换不丢状态（滚动位置、页签、弹窗、折叠状态均跨面板记忆；开合内嵌分栏、拖宽后仍锚定正在阅读的卡片）
 - 卡片可拖拽排序，顺序持久保存（会话页头条跟随排序后的第一个来源）
 
 ## 安装
@@ -34,7 +34,7 @@ dsh plugin install ./dsh-plugin-newsnow
 | `requestTimeoutMs` | 1000–60000 | `12000` | 单次上游请求超时 |
 | `userAgent` | string | `Mozilla/5.0 (compatible; dsh-newsnow/1.0)` | 上游要求浏览器 UA，否则 403 |
 
-界面上的开关与偏好会持久化到 `<DSH_HOME|~/.dsh>/storages/dsh-newsnow.json`，删除该文件即恢复配置默认。
+界面上的开关与偏好会持久化到 `<DSH_HOME|~/.dsh>/storages/dsh-newsnow.json`，删除该文件即恢复配置默认；卡片排序与内嵌页签记录存在浏览器 localStorage（`dsh-newsnow:card-order` / `dsh-newsnow:embed-tabs`），上游数据只在内存缓存、不落盘。
 
 ## 来源管理
 
