@@ -88,6 +88,44 @@ window.__ModuleLoader__.load({
       if (remembered.scrollTop > 0) el.scrollTop = remembered.scrollTop
     }
 
+    /* Card order: the wall is drag-sortable and the sequence persists in
+       localStorage (`dsh-newsnow:card-order`), mirrored into module state so
+       panel remounts skip a re-parse. Sources the reader never arranged (and
+       new ones from the catalog) keep their catalog order behind the arranged
+       ones. */
+    const CARD_ORDER_KEY = 'dsh-newsnow:card-order'
+    const readCardOrder = () => {
+      if (remembered.order !== undefined) return remembered.order
+      try {
+        const raw = globalThis.localStorage?.getItem(CARD_ORDER_KEY)
+        const parsed = typeof raw === 'string' && raw !== '' ? JSON.parse(raw) : []
+        remembered.order = Array.isArray(parsed) ? parsed.filter((id) => typeof id === 'string') : []
+      } catch {
+        remembered.order = []
+      }
+      return remembered.order
+    }
+    const writeCardOrder = (order) => {
+      remembered.order = order
+      try {
+        globalThis.localStorage?.setItem(CARD_ORDER_KEY, JSON.stringify(order))
+      } catch {
+        // Storage may be unavailable (private mode); the order stays for this page.
+      }
+    }
+    const applyCardOrder = (sources, order) => {
+      if (!Array.isArray(order) || order.length === 0) return sources
+      const rank = new Map(order.map((id, index) => [id, index]))
+      return sources.slice().sort((a, b) => {
+        const ra = rank.get(a.id)
+        const rb = rank.get(b.id)
+        if (ra !== undefined && rb !== undefined) return ra - rb
+        if (ra !== undefined) return -1
+        if (rb !== undefined) return 1
+        return 0 // stable sort keeps unarranged sources in catalog order
+      })
+    }
+
     /**
      * UI strings live in locale/zh.json and locale/en.json ("text" section);
      * the Host serves them over /api/dsh-newsnow/text and apply() registers
@@ -182,6 +220,8 @@ window.__ModuleLoader__.load({
 /* Card = a faint colour wash over a frosted pane, plus a corner glow (sprinkle-*). */
 .dshnn-card { position:relative; display:flex; flex-direction:column; min-width:0; height:clamp(300px, 46vh, 500px); border-radius:16px; padding:14px; border:1px solid var(--dshnn-edge, var(--dsw-alias-border-l1)); -webkit-backdrop-filter:var(--dshnn-blur); backdrop-filter:var(--dshnn-blur); background-image:radial-gradient(ellipse 90% 70% at 50% -20%, var(--dshnn-glow), transparent), linear-gradient(var(--dshnn-wash), var(--dshnn-wash)); background-color:var(--dshnn-pane); box-shadow:0 1px 2px -1px color-mix(in srgb, var(--dsw-alias-label-primary) 16%, transparent), 0 10px 28px -20px color-mix(in srgb, var(--dsw-alias-label-primary) 30%, transparent); transition:border-color .2s ease, box-shadow .2s ease, transform .2s ease; }
 .dshnn-card:hover { border-color:var(--dshnn-edge, var(--dsw-alias-border-l2)); }
+.dshnn-card[draggable="true"] { cursor:grab; }
+.dshnn-card[draggable="true"]:active { cursor:grabbing; }
 .dshnn-card[data-accent="blue"] { --dshnn-accent: var(--dsw-alias-brand-primary); }
 .dshnn-card[data-accent="red"], .dshnn-card[data-accent="pink"] { --dshnn-accent: var(--dsw-alias-state-error-primary); }
 .dshnn-card[data-accent="orange"], .dshnn-card[data-accent="yellow"] { --dshnn-accent: var(--dsw-alias-state-warn-primary); }
@@ -1753,6 +1793,22 @@ window.__ModuleLoader__.load({
           ref: rootRef,
           'data-accent': source.color ?? 'blue',
           'data-source': source.id,
+          draggable: true,
+          onDragStart: (event) => {
+            event.dataTransfer?.setData('text/plain', source.id)
+            if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+          },
+          onDragOver: (event) => {
+            if (event.dataTransfer) {
+              event.preventDefault()
+              event.dataTransfer.dropEffect = 'move'
+            }
+          },
+          onDrop: (event) => {
+            event.preventDefault()
+            const dragId = event.dataTransfer?.getData('text/plain')
+            if (typeof dragId === 'string' && dragId !== '') props.onReorder?.(dragId, source.id)
+          },
           style: {
             /* Soft wash: barely tints the pane, so text keeps full contrast. */
             '--dshnn-wash': tintAlpha(tint, 0.07),
@@ -2513,6 +2569,24 @@ window.__ModuleLoader__.load({
       }, [store])
 
       const enabled = snapshot.sources.filter((source) => source.enabled)
+      /* Drag-sorted wall: the saved order ranks first, catalog order fills the
+         rest. The hero pill reads the same sequence for its headline source. */
+      const [order, setOrder] = React.useState(() => readCardOrder())
+      const wall = applyCardOrder(enabled, order)
+      const wallIdsRef = React.useRef([])
+      wallIdsRef.current = wall.map((source) => source.id)
+      const reorderCards = React.useCallback((dragId, overId) => {
+        if (dragId === overId) return
+        const ids = wallIdsRef.current.filter((id) => id !== dragId)
+        const at = ids.indexOf(overId)
+        if (at === -1) return
+        ids.splice(at, 0, dragId)
+        /* Keep ranks for sources not currently on the wall (disabled): their
+           saved positions survive until they are switched back on. */
+        const saved = readCardOrder().filter((id) => ids.includes(id) === false)
+        writeCardOrder([...ids, ...saved])
+        setOrder([...ids, ...saved])
+      }, [])
 
       // Stable identities so memoised cards skip re-renders they do not care about.
       const refreshOne = React.useCallback(
@@ -2641,7 +2715,7 @@ window.__ModuleLoader__.load({
             onScroll: rememberScroll,
           },
           fabs,
-          enabled.map((source) =>
+          wall.map((source) =>
             h(MemoSourceCard, {
               key: source.id,
               source,
@@ -2652,6 +2726,7 @@ window.__ModuleLoader__.load({
               onToggle: toggle,
               onVisible: showCard,
               openLink,
+              onReorder: reorderCards,
             }),
           ),
         )
@@ -2687,7 +2762,10 @@ window.__ModuleLoader__.load({
         void store.loadDirectory()
       }, [store])
 
-      const first = snapshot.sources.find((source) => source.enabled)
+      const first = applyCardOrder(
+        snapshot.sources.filter((source) => source.enabled),
+        readCardOrder(),
+      )[0]
       const feed = first === undefined ? undefined : snapshot.feeds[first.id]
       const headline = feed?.items?.[0]
       /* The pill can mount before the locale route answers; stay wordless. */

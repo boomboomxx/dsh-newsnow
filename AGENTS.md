@@ -39,7 +39,7 @@ tools/              本地探针与 asar 解包（.gitignore 排除，不随仓�
 6. **locale.register(ns, pairs) 重复注册同一 locale 会 throw "already has locale"**：每次页面加载只注册一次。Harness 八语言，fallback 链末尾恒为 `en`——字典必须覆盖全部 8 语言。
 7. **模块缓存 immutable**（`max-age=31536000`）：rev 只由文件 mtime/ctime/size 生成，改文件即换 URL；客户端改完必须硬刷新才能看到。
 8. **上游要求浏览器 UA**，否则 403；`/api/sources` 被 Cloudflare 拦，来源列表实测固化（38 个有效；`36kr` 系与 `github-trending` 无效）。
-9. `main` 槽位无 keep-alive：切面板即卸载 React 子树；webview guest 随 DOM 卸载销毁且 lease 一次性。跨面板状态走模块级 `remembered` / store（scrollTop、embedWidth、managing、cardOpen、embed tabs localStorage `dsh-newsnow:embed-tabs`）。卡片墙滚动用**读者锚点**恢复（`captureWallAnchor`/`restoreWall`：最上方可见卡 `data-source` + 视口内偏移；开合内嵌分栏、拖宽、点击链接都会先 `captureWallAnchor()` 再恢复）——裸 scrollTop 会被布局翻转自身触发的 scroll 事件重置为 0。
+9. `main` 槽位无 keep-alive：切面板即卸载 React 子树；webview guest 随 DOM 卸载销毁且 lease 一次性。跨面板状态走模块级 `remembered` / store（scrollTop、embedWidth、managing、cardOpen、embed tabs localStorage `dsh-newsnow:embed-tabs`、卡片顺序 localStorage `dsh-newsnow:card-order`，经 `readCardOrder`/`writeCardOrder`/`applyCardOrder`；卡片墙与 hero 头条同序）。卡片墙滚动用**读者锚点**恢复（`captureWallAnchor`/`restoreWall`：最上方可见卡 `data-source` + 视口内偏移；开合内嵌分栏、拖宽、点击链接都会先 `captureWallAnchor()` 再恢复）——裸 scrollTop 会被布局翻转自身触发的 scroll 事件重置为 0。
 
 ## UI 结构（slot 注册）
 
@@ -53,7 +53,7 @@ tools/              本地探针与 asar 解包（.gitignore 排除，不随仓�
 ```bash
 node --check index.js && node --check client.js
 node tools/probe-host.mjs   # Host：真实 Cordis + 真实上游，55 项（依赖 tools/cordis-extract）
-node tools/pc5.mjs          # Client：伪 loader + 组件渲染循环，228 项
+node tools/pc5.mjs          # Client：伪 loader + 组件渲染循环，234 项
 ```
 
 探针不在仓库中（`tools/` 被 .gitignore 排除），恢复方法见 tools/README.md。对外观测 live host：`GET http://127.0.0.1:<port>/dsh-newsnow/api/status`（免鉴权，返回 version 与 textRoute）。
